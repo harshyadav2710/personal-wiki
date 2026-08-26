@@ -4,24 +4,7 @@ from mcp.server.fastmcp import FastMCP
 from postgres_store import get_note, list_recent_notes, save_note, search_notes
 
 
-mcp = FastMCP(
-    "recall-personal-wiki",
-    settings={
-        "transport_security": {
-            "enable_dns_rebinding_protection": True,
-            "allowed_hosts": [
-                "personal-wiki-2.onrender.com",
-                "localhost",
-                "127.0.0.1",
-            ],
-            "allowed_origins": [
-                "https://personal-wiki-2.onrender.com",
-                "http://localhost",
-                "http://127.0.0.1",
-            ],
-        }
-    },
-)
+mcp = FastMCP("recall-personal-wiki")
 
 
 @mcp.tool()
@@ -33,7 +16,9 @@ def search_personal_wiki(query: str) -> str:
         return "No matching memories found."
 
     return "\n\n".join(
-        f"[{result['id']}] {result['title']}\n{result['content']}\nTags: {', '.join(result['tags'])}"
+        f"[{result['id']}] {result['title']}\n"
+        f"{result['content']}\n"
+        f"Tags: {', '.join(result['tags'])}"
         for result in results
     )
 
@@ -46,19 +31,28 @@ def read_personal_note(note_id: int) -> str:
     if not note:
         return "Note not found."
 
-    return f"[{note['id']}] {note['title']}\n{note['content']}\nTags: {', '.join(note['tags'])}"
+    return (
+        f"[{note['id']}] {note['title']}\n"
+        f"{note['content']}\n"
+        f"Tags: {', '.join(note['tags'])}"
+    )
 
 
 @mcp.tool()
 def list_recent_personal_notes(limit: int = 10) -> str:
     """List recent notes in the personal wiki."""
     limit = max(1, min(limit, 50))
+
     notes = list_recent_notes(limit)
 
-    return "\n".join(
-        f"[{note['id']}] {note['title']} (tags: {', '.join(note['tags'])})"
-        for note in notes
-    ) or "No notes found."
+    return (
+        "\n".join(
+            f"[{note['id']}] {note['title']} "
+            f"(tags: {', '.join(note['tags'])})"
+            for note in notes
+        )
+        or "No notes found."
+    )
 
 
 @mcp.tool()
@@ -68,6 +62,7 @@ def save_personal_note(
     tags: list[str] | None = None
 ) -> str:
     """Save a new note to the personal wiki and index it for search."""
+
     if not title.strip() or not content.strip():
         return "Title and content are required."
 
@@ -79,9 +74,11 @@ def save_personal_note(
 @mcp.tool()
 def get_wiki_status() -> str:
     """Check that the Recall PostgreSQL knowledge store is available."""
+
     try:
         search_notes("status")
         return "Recall PostgreSQL knowledge store is available."
+
     except Exception as error:
         return f"Recall PostgreSQL is unavailable: {error}"
 
@@ -90,11 +87,15 @@ if __name__ == "__main__":
     transport = os.getenv("MCP_TRANSPORT", "stdio")
 
     if transport == "http":
-        mcp.settings.host = "0.0.0.0"
-        mcp.settings.port = int(os.getenv("PORT", "10000"))
+        port = int(os.getenv("PORT", "10000"))
 
         mcp.run(
-            transport="streamable-http"
+            transport="http",
+            host="0.0.0.0",
+            port=port,
         )
+
     else:
-        mcp.run(transport="stdio")
+        mcp.run(
+            transport="stdio"
+        )
