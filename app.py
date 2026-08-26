@@ -148,7 +148,7 @@ def chat():
         personal_question = any(phrase in message.lower() for phrase in (
             "about myself", "about me", "my background", "my profile", "who am i",
             "my achievement", "my project", "my skill", "my education", "my experience",
-            "my career", "my qualification", "my qualification",
+            "my career", "my qualification", "my qualification","harsh yadav"
         )) or (
             any(re.search(rf"\b{word}\b", message.lower()) for word in ("achievement", "achievements", "projects", "skills", "education", "experience", "career", "qualification"))
             and any(re.search(rf"\b{word}\b", message.lower()) for word in ("my", "me", "myself", "i"))

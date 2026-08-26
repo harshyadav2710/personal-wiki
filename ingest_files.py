@@ -47,13 +47,14 @@ def ingest_folder(folder="source_files"):
             if author:
                 content = f"Title: {title}\nAuthor: {author}\n\n{content}"
             raw_data = {"source": str(path), "extension": path.suffix.lower(), "size": len(content)}
+            tags = '["myself"]' if "personal" in path.stem.lower() or "about_me" in path.stem.lower() else '["file-ingestion"]'
             note = connection.execute(
                 """INSERT INTO wiki_notes (source_id, title, content, tags, raw_data, created_at)
                    VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s)
                    ON CONFLICT (source_id) DO UPDATE SET title=EXCLUDED.title, content=EXCLUDED.content,
-                   raw_data=EXCLUDED.raw_data, created_at=EXCLUDED.created_at
+                   tags=EXCLUDED.tags, raw_data=EXCLUDED.raw_data, created_at=EXCLUDED.created_at
                    RETURNING id""",
-                (source_id, title, content, '["file-ingestion"]', json.dumps(raw_data), datetime.now(timezone.utc)),
+                (source_id, title, content, tags, json.dumps(raw_data), datetime.now(timezone.utc)),
             ).fetchone()
             note_id = note["id"]
             connection.execute("DELETE FROM wiki_chunks WHERE note_id = %s", (note_id,))
@@ -66,6 +67,40 @@ def ingest_folder(folder="source_files"):
     print(f"Ingested {ingested} files into PostgreSQL.")
     return ingested
 
+def ingest_single_file(file_path):
+    initialize_schema()
+    path = Path(file_path)
+    if not path.is_file() or path.suffix.lower() not in SUPPORTED_EXTENSIONS:
+        print(f"Skipped: {path} (unsupported or not found)")
+        return
+    with connect() as connection:
+        print(f"Processing: {path.name}")
+        raw_content = path.read_text(encoding="utf-8")
+        source_id = f"file:{path.resolve()}"
+        filename_title = path.stem.replace("_", " ").replace("-", " ").title()
+        title = extract_title(raw_content, filename_title)
+        author = extract_author(raw_content)
+        content = remove_gutenberg_boilerplate(raw_content)
+        if author:
+            content = f"Title: {title}\nAuthor: {author}\n\n{content}"
+        raw_data = {"source": str(path), "extension": path.suffix.lower(), "size": len(content)}
+        tags = '["myself"]' if "personal" in path.stem.lower() or "about_me" in path.stem.lower() else '["file-ingestion"]'
+        note = connection.execute(
+            """INSERT INTO wiki_notes (source_id, title, content, tags, raw_data, created_at)
+               VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s)
+               ON CONFLICT (source_id) DO UPDATE SET title=EXCLUDED.title, content=EXCLUDED.content,
+               tags=EXCLUDED.tags, raw_data=EXCLUDED.raw_data, created_at=EXCLUDED.created_at
+               RETURNING id""",
+            (source_id, title, content, tags, json.dumps(raw_data), datetime.now(timezone.utc)),
+        ).fetchone()
+        note_id = note["id"]
+        connection.execute("DELETE FROM wiki_chunks WHERE note_id = %s", (note_id,))
+        for index, chunk in enumerate(chunk_text(content)):
+            connection.execute(
+                "INSERT INTO wiki_chunks (note_id, chunk_index, content) VALUES (%s, %s, %s)",
+                (note_id, index, chunk),
+            )
+    print("Done.")
 
 if __name__ == "__main__":
     ingest_folder(os.getenv("WIKI_SOURCE_DIR", "source_files"))

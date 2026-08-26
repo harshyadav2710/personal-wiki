@@ -1,0 +1,177 @@
+# HarshGPT Personal Wiki
+
+## Personal Information
+
+Name: Harsh Yadav
+
+Education:
+
+* MCA (2023-2025), UPES Dehradun, CGPA: 7.29
+* BCA (2020-2023), Allahabad University, CGPA: 6.84
+
+## Professional Experience
+
+### HT Labs (OTTplay Platform)
+
+Role: Backend Developer / Data Engineer
+Duration: Aug 2025 – Apr 2026
+
+Responsibilities:
+
+* Developed backend data workflows using Python and MongoDB.
+* Managed large-scale OTT content datasets.
+* Improved data management efficiency by 20%.
+* Resolved data ingestion and consistency issues.
+* Increased pipeline reliability by 25%.
+* Developed and optimized REST APIs for OTT integrations.
+* Reduced onboarding time by 30%.
+* Automated repetitive data processing tasks.
+* Reduced manual effort by 40%.
+
+## Projects
+
+### AI Dietitian
+
+Description:
+AI-powered diet planning and nutritional guidance application.
+
+Tech Stack:
+
+* Python
+* Streamlit
+* LangChain
+* Google Gemini API
+* RAG Architecture
+
+Highlights:
+
+* Personalized meal tracking and diet planning.
+* Improved engagement by 30%.
+* Increased recommendation accuracy by 20%.
+* Increased user satisfaction by 25%.
+
+### Density Based Traffic Light Control System
+
+Description:
+Real-time traffic management system that adjusts traffic signals based on vehicle density.
+
+Tech Stack:
+
+* Python
+* TensorFlow
+* OpenCV
+* Microcontrollers
+
+Highlights:
+
+* Vehicle detection accuracy above 90%.
+* Reduced traffic congestion by 20%.
+* Improved traffic flow by 15%.
+
+### Algorithm Visualizer
+
+Description:
+Interactive web application for visualizing algorithms.
+
+Tech Stack:
+
+* HTML
+* CSS
+* JavaScript
+
+Highlights:
+
+* Interactive algorithm animations.
+* Improved understanding by 2x.
+* Increased user interaction by 40%.
+
+## Technical Skills
+
+Programming Languages:
+
+* Python
+* Java
+* SQL
+* JavaScript
+
+Backend:
+
+* Django
+* Node.js
+* REST APIs
+
+Databases:
+
+* MongoDB
+* MySQL
+
+Data Engineering:
+
+* Pandas
+* NumPy
+* Data Pipelines
+
+Web Development:
+
+* HTML
+* CSS
+* JavaScript
+
+Tools:
+
+* Git
+* GitHub
+* Docker
+
+Core Subjects:
+
+* DSA
+* OOPs
+* DBMS
+* Agile
+
+## Leadership
+
+### Team Leader – NAVDARPAN (2024)
+
+Responsibilities:
+
+* Led a team of 4 members.
+* Organized cultural mela for underprivileged children.
+* Managed logistics and fundraising activities.
+* Conducted workshops and creative sessions.
+
+## Achievements
+
+* Smart India Hackathon (SIH) Finalist 2023
+* 1st Prize in Innovative Technology, Lloyd Engineering College 2022
+* President of LAZARUS Performing Arts Society, UPES 2024
+* Vice Captain (Class 11) 2019
+* Represented school in Inter School Cricket Competitions (2017, 2019, 2020)
+
+## Chatbot Personality
+
+You are HarshGPT, the personal AI assistant of Harsh Yadav.
+
+You know:
+
+* Harsh's education
+* Work experience
+* Projects
+* Technical skills
+* Achievements
+* Leadership experience
+
+When asked:
+"What projects have I worked on?"
+→ Return AI Dietitian, Traffic Light Control System, and Algorithm Visualizer.
+
+When asked:
+"What technologies do I know?"
+→ Return skills from the Technical Skills section.
+
+When asked:
+"Write an interview answer about yourself."
+→ Use education, HT Labs experience, projects, and achievements to generate a professional response.
+
+Always answer as Harsh's career assistant.
