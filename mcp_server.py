@@ -4,7 +4,14 @@ from mcp.server.fastmcp import FastMCP
 from postgres_store import get_note, list_recent_notes, save_note, search_notes
 
 
-mcp = FastMCP("recall-personal-wiki")
+transport = os.getenv("MCP_TRANSPORT", "stdio")
+port = int(os.getenv("PORT", "10000"))
+
+mcp = FastMCP(
+    "recall-personal-wiki",
+    host="0.0.0.0",
+    port=port,
+)
 
 
 @mcp.tool()
@@ -84,18 +91,7 @@ def get_wiki_status() -> str:
 
 
 if __name__ == "__main__":
-    transport = os.getenv("MCP_TRANSPORT", "stdio")
-
     if transport == "http":
-        port = int(os.getenv("PORT", "10000"))
-
-        mcp.run(
-            transport="http",
-            host="0.0.0.0",
-            port=port,
-        )
-
+        mcp.run(transport="streamable-http")
     else:
-        mcp.run(
-            transport="stdio"
-        )
+        mcp.run(transport="stdio")
