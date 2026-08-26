@@ -10,10 +10,14 @@ mcp = FastMCP("recall-personal-wiki")
 def search_personal_wiki(query: str) -> str:
     """Search the user's private personal wiki and return relevant memory."""
     results = search_notes(query)
+
     if not results:
         return "No matching memories found."
+
     return "\n\n".join(
-        f"[{result['id']}] {result['title']}\n{result['content']}\nTags: {', '.join(result['tags'])}"
+        f"[{result['id']}] {result['title']}\n"
+        f"{result['content']}\n"
+        f"Tags: {', '.join(result['tags'])}"
         for result in results
     )
 
@@ -22,25 +26,46 @@ def search_personal_wiki(query: str) -> str:
 def read_personal_note(note_id: int) -> str:
     """Read one complete personal wiki note by its PostgreSQL id."""
     note = get_note(note_id)
+
     if not note:
         return "Note not found."
-    return f"[{note['id']}] {note['title']}\n{note['content']}\nTags: {', '.join(note['tags'])}"
+
+    return (
+        f"[{note['id']}] {note['title']}\n"
+        f"{note['content']}\n"
+        f"Tags: {', '.join(note['tags'])}"
+    )
 
 
 @mcp.tool()
 def list_recent_personal_notes(limit: int = 10) -> str:
     """List recent notes in the personal wiki."""
     limit = max(1, min(limit, 50))
+
     notes = list_recent_notes(limit)
-    return "\n".join(f"[{note['id']}] {note['title']} (tags: {', '.join(note['tags'])})" for note in notes) or "No notes found."
+
+    return (
+        "\n".join(
+            f"[{note['id']}] {note['title']} "
+            f"(tags: {', '.join(note['tags'])})"
+            for note in notes
+        )
+        or "No notes found."
+    )
 
 
 @mcp.tool()
-def save_personal_note(title: str, content: str, tags: list[str] | None = None) -> str:
+def save_personal_note(
+    title: str,
+    content: str,
+    tags: list[str] | None = None,
+) -> str:
     """Save a new note to the personal wiki and index it for search."""
     if not title.strip() or not content.strip():
         return "Title and content are required."
+
     note = save_note(title, content, tags)
+
     return f"Saved note [{note['id']}] {note['title']}."
 
 
@@ -55,13 +80,12 @@ def get_wiki_status() -> str:
 
 
 if __name__ == "__main__":
-    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    transport = os.getenv("MCP_TRANSPORT", "http")
 
     if transport == "http":
-        mcp.run(
-            transport="streamable-http",
-            host="0.0.0.0",
-            port=int(os.getenv("PORT", "10000"))
-        )
+        mcp.settings.host = "0.0.0.0"
+        mcp.settings.port = int(os.getenv("PORT", "10000"))
+
+        mcp.run(transport="streamable-http")
     else:
         mcp.run(transport="stdio")
