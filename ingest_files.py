@@ -37,6 +37,7 @@ def ingest_folder(folder="source_files"):
     ingested = 0
     with connect() as connection:
         for path in files:
+            print(f"Processing: {path.name}")
             raw_content = path.read_text(encoding="utf-8")
             source_id = f"file:{path.resolve()}"
             filename_title = path.stem.replace("_", " ").replace("-", " ").title()
