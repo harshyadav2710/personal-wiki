@@ -1,3 +1,4 @@
+import os
 from mcp.server.fastmcp import FastMCP
 
 from postgres_store import get_note, list_recent_notes, save_note, search_notes
@@ -54,4 +55,13 @@ def get_wiki_status() -> str:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+
+    if transport == "http":
+        mcp.run(
+            transport="streamable-http",
+            host="0.0.0.0",
+            port=int(os.getenv("PORT", "10000"))
+        )
+    else:
+        mcp.run(transport="stdio")
