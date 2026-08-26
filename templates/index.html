@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recall | Personal Wiki</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">R</span><span>recall</span></div>
+      <div class="profile"><div class="avatar">M</div><div><strong>My knowledge base</strong><span>Private workspace</span></div></div>
+      <nav><button class="nav-item active"><span>✦</span> Ask recall</button><button class="nav-item" id="notesNav"><span>▤</span> All notes <b id="noteCount">0</b></button><button class="nav-item" id="newNoteNav"><span>＋</span> New note</button></nav>
+      <div class="sidebar-foot"><div class="sync-dot"></div><span id="connectionStatus">{{ postgres_status }}</span></div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><div class="crumb">PERSONAL WIKI <span>/</span> <strong>Ask recall</strong></div><button class="icon-button" id="clearChat" title="Clear conversation">⌘</button></header>
+      <section class="workspace">
+        <div class="intro"><div class="eyebrow">YOUR SECOND BRAIN</div><h1>Make your notes<br><em>rememberable.</em></h1><p>Ask questions across everything you have captured. Recall finds the thread.</p></div>
+        <div class="chat-panel">
+          <div class="chat-log" id="chatLog"><div class="message assistant"><div class="mini-avatar">R</div><div><div class="message-meta">RECALL <span>just now</span></div><p>Hey. I’m your personal wiki. Ask me about anything you’ve saved, or tell me something worth remembering.</p><div class="suggestions"><button data-prompt="What should I review this week?">Review this week</button><button data-prompt="What are my routines?">Show my routines</button><button data-prompt="What have I saved?">What have I saved?</button></div></div></div></div>
+          <form class="composer" id="chatForm"><textarea id="chatInput" rows="1" placeholder="Ask your wiki anything..." aria-label="Ask your wiki"></textarea><button class="send-button" type="submit" title="Send message">↑</button></form>
+          <div class="composer-hint">Recall searches your saved notes and remembers every conversation.</div>
+        </div>
+        <section class="notes-section" id="notesSection"><div class="section-heading"><div><div class="eyebrow">YOUR LIBRARY</div><h2>Recent notes</h2></div><button class="new-note-button" id="newNoteButton">＋ Add note</button></div><div class="notes-grid" id="notesGrid"></div></section>
+      </section>
+    </main>
+  </div>
+  <dialog id="noteDialog"><form method="dialog" id="noteForm"><div class="dialog-top"><div><div class="eyebrow">CAPTURE A THOUGHT</div><h2>New note</h2></div><button class="close-button" value="cancel" aria-label="Close">×</button></div><label>Title<input id="noteTitle" required placeholder="A useful title"></label><label>Note<textarea id="noteContent" required rows="6" placeholder="Write it down... "></textarea></label><label>Tags <span class="muted">comma separated</span><input id="noteTags" placeholder="work, idea"></label><button class="save-button" value="default">Save to wiki</button><p class="form-error" id="formError"></p></form></dialog>
+  <dialog id="viewDialog"><article class="note-viewer"><div class="dialog-top"><div><div class="eyebrow">PRIVATE NOTE</div><h2 id="viewTitle"></h2></div><button class="close-button" id="closeViewer" aria-label="Close">×</button></div><div class="viewer-tags" id="viewTags"></div><div class="note-content" id="viewContent"></div></article></dialog>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

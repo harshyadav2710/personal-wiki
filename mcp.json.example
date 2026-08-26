@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "recall-personal-wiki": {
+      "command": "C:/Program Files/Python311/python.exe",
+      "args": ["C:/path/to/EOXS/mcp_server.py"]
+    }
+  }
+}
