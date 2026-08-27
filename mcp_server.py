@@ -1,5 +1,6 @@
 import os
 from mcp.server.fastmcp import FastMCP
+from tier_store import status as tier_status
 
 from postgres_store import get_note, list_recent_notes, save_note, search_notes
 
@@ -50,6 +51,14 @@ def read_personal_note(note_id: int) -> str:
         f"Tags: {', '.join(note['tags'])}"
     )
 
+@mcp.tool()
+def get_tier_counts() -> str:
+    info = tier_status()
+
+    return "\n".join(
+        f"Tier {tier}: {count}"
+        for tier, count in sorted(info["rows_per_tier"].items())
+    )
 
 @mcp.tool()
 def list_recent_personal_notes(limit: int = 10) -> str:
