@@ -64,6 +64,7 @@ def ingest_folder(folder="source_files"):
                     (note_id, index, chunk),
                 )
             ingested += 1
+        connection.commit()
     print(f"Ingested {ingested} files into PostgreSQL.")
     return ingested
 
@@ -100,6 +101,7 @@ def ingest_single_file(file_path):
                 "INSERT INTO wiki_chunks (note_id, chunk_index, content) VALUES (%s, %s, %s)",
                 (note_id, index, chunk),
             )
+        connection.commit()
     print("Done.")
 
 if __name__ == "__main__":

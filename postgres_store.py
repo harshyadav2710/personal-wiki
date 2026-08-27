@@ -13,6 +13,11 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 PG_DSN = os.getenv("PG_DSN", "postgresql://postgres:postgres@localhost:5432/personal_wiki")
+ALLOWED_TIERS = {
+    int(tier.strip())
+    for tier in os.getenv("MCP_ALLOWED_TIERS", "1,2,3").split(",")
+    if tier.strip().isdigit()
+}
 
 
 def connect():
@@ -61,38 +66,116 @@ def upsert_note(note):
 
 
 def search_notes(query, limit=5):
-    stop_words = {"what", "when", "where", "which", "who", "how", "tell", "about", "my", "me", "the", "are", "is", "do", "have", "i", "delivered", "deliver", "gave", "give", "said", "say"}
-    words = [word for word in re.findall(r"[a-zA-Z0-9]+", query.lower()) if len(word) > 2 and word not in stop_words]
+    stop_words = {
+        "what", "when", "where", "which", "who", "how", "tell",
+        "about", "my", "me", "the", "are", "is", "do", "have",
+        "i", "delivered", "deliver", "gave", "give", "said", "say"
+    }
+
+    words = [
+        word
+        for word in re.findall(r"[a-zA-Z0-9]+", query.lower())
+        if len(word) > 2 and word not in stop_words
+    ]
+
     terms = " ".join(words)
+
     if not terms:
         return []
+
+    # Prevent very large MCP responses
+    limit = max(1, min(int(limit), 10))
+
+    # Make sure this MCP has at least one allowed tier
+    if not ALLOWED_TIERS:
+        return []
+
+    tier_placeholders = ", ".join(["%s"] * len(ALLOWED_TIERS))
+    tier_values = tuple(sorted(ALLOWED_TIERS))
+
     with connect() as connection:
-        title_conditions = " OR ".join("lower(n.title) LIKE %s" for _ in words)
+
+        # 1. Search note titles
+        title_conditions = " OR ".join(
+            "lower(n.title) LIKE %s"
+            for _ in words
+        )
+
+        title_score_conditions = " + ".join(
+            "CASE WHEN lower(n.title) LIKE %s THEN 1 ELSE 0 END"
+            for _ in words
+        )
+
         title_matches = connection.execute(
-            f"""SELECT n.id, n.title, n.tags, n.content, n.created_at,
-                       ({" + ".join("CASE WHEN lower(n.title) LIKE %s THEN 1 ELSE 0 END" for _ in words)}) AS title_score
-                FROM wiki_notes n
-                WHERE {title_conditions}
-                ORDER BY title_score DESC, n.id
-                LIMIT %s""",
-            tuple(f"%{word}%" for word in words) + tuple(f"%{word}%" for word in words) + (limit,),
+            f"""
+            SELECT
+                n.id,
+                n.title,
+                n.tags,
+                n.content,
+                n.created_at,
+                ({title_score_conditions}) AS title_score
+            FROM wiki_notes n
+            WHERE
+                n.tier IN ({tier_placeholders})
+                AND ({title_conditions})
+            ORDER BY title_score DESC, n.id
+            LIMIT %s
+            """,
+            tuple(f"%{word}%" for word in words)
+            + tier_values
+            + tuple(f"%{word}%" for word in words)
+            + (limit,),
         ).fetchall()
+
         if title_matches:
             return title_matches
+
+        # 2. Search chunks by title
         title_matches = connection.execute(
-            """SELECT n.id, n.title, n.tags, c.content
-               FROM wiki_chunks c JOIN wiki_notes n ON n.id = c.note_id
-               WHERE lower(n.title) LIKE %s
-               ORDER BY n.id, c.chunk_index
-               LIMIT %s""", (f"%{terms}%", limit)).fetchall()
+            f"""
+            SELECT
+                n.id,
+                n.title,
+                n.tags,
+                c.content
+            FROM wiki_chunks c
+            JOIN wiki_notes n ON n.id = c.note_id
+            WHERE
+                n.tier IN ({tier_placeholders})
+                AND lower(n.title) LIKE %s
+            ORDER BY n.id, c.chunk_index
+            LIMIT %s
+            """,
+            tier_values + (f"%{terms}%", limit),
+        ).fetchall()
+
         if title_matches:
             return title_matches
+
+        # 3. Full-text search inside chunks
         return connection.execute(
-            """SELECT n.id, n.title, n.tags, c.content
-               FROM wiki_chunks c JOIN wiki_notes n ON n.id = c.note_id
-               WHERE to_tsvector('simple', c.content) @@ plainto_tsquery('simple', %s)
-               ORDER BY ts_rank(to_tsvector('simple', c.content), plainto_tsquery('simple', %s)) DESC
-               LIMIT %s""", (terms, terms, limit)).fetchall()
+            f"""
+            SELECT
+                n.id,
+                n.title,
+                n.tags,
+                c.content
+            FROM wiki_chunks c
+            JOIN wiki_notes n ON n.id = c.note_id
+            WHERE
+                n.tier IN ({tier_placeholders})
+                AND to_tsvector('simple', c.content)
+                    @@ plainto_tsquery('simple', %s)
+            ORDER BY
+                ts_rank(
+                    to_tsvector('simple', c.content),
+                    plainto_tsquery('simple', %s)
+                ) DESC
+            LIMIT %s
+            """,
+            tier_values + (terms, terms, limit),
+        ).fetchall()
 
 
 def list_recent_notes(limit=10):

@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(SID=b8624c223c6f49f59281ff963b7048f6 curl -sS -X POST http://127.0.0.1:10002/mcp -H \"Content-Type: application/json\" -H \"Accept: application/json, text/event-stream\" -H \"mcp-session-id: $SID\" -d '{\"\"\"\"jsonrpc\"\"\"\":\"\"\"\"2.0\"\"\"\",\"\"\"\"id\"\"\"\":3,\"\"\"\"method\"\"\"\":\"\"\"\"tools/call\"\"\"\",\"\"\"\"params\"\"\"\":{\"\"\"\"name\"\"\"\":\"\"\"\"search_tiered_wiki\"\"\"\",\"\"\"\"arguments\"\"\"\":{\"\"\"\"query\"\"\"\":\"\"\"\"Tom Sawyer\"\"\"\"}}}')"
+    ]
+  }
+}

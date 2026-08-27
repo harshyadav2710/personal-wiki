@@ -6,6 +6,12 @@ from postgres_store import get_note, list_recent_notes, save_note, search_notes
 
 transport = os.getenv("MCP_TRANSPORT", "stdio")
 port = int(os.getenv("PORT", "10000"))
+# Tiers this MCP server is allowed to access
+allowed_tiers = {
+    int(tier.strip())
+    for tier in os.getenv("MCP_ALLOWED_TIERS", "1,2,3").split(",")
+    if tier.strip().isdigit()
+}
 
 mcp = FastMCP(
     "recall-personal-wiki",
