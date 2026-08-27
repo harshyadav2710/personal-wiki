@@ -72,21 +72,35 @@ def search_notes(query, limit=5):
         "i", "delivered", "deliver", "gave", "give", "said", "say"
     }
 
+    query_lower = query.lower().strip()
+
+    personal_query = any(
+        phrase in query_lower
+        for phrase in [
+            "about myself",
+            "about me",
+            "tell me about myself",
+            "tell me about me",
+            "myself",
+            "personal information",
+            "personal details"
+        ]
+    )
+
     words = [
         word
-        for word in re.findall(r"[a-zA-Z0-9]+", query.lower())
+        for word in re.findall(r"[a-zA-Z0-9]+", query_lower)
         if len(word) > 2 and word not in stop_words
     ]
 
-    terms = " ".join(words)
+    if personal_query:
+        words = ["personal", "myself"]
 
-    if not terms:
+    if not words:
         return []
 
-    # Prevent very large MCP responses
     limit = max(1, min(int(limit), 10))
 
-    # Make sure this MCP has at least one allowed tier
     if not ALLOWED_TIERS:
         return []
 
@@ -95,14 +109,9 @@ def search_notes(query, limit=5):
 
     with connect() as connection:
 
-        # 1. Search note titles
+        # Search title
         title_conditions = " OR ".join(
             "lower(n.title) LIKE %s"
-            for _ in words
-        )
-
-        title_score_conditions = " + ".join(
-            "CASE WHEN lower(n.title) LIKE %s THEN 1 ELSE 0 END"
             for _ in words
         )
 
@@ -114,16 +123,19 @@ def search_notes(query, limit=5):
                 n.tags,
                 n.content,
                 n.created_at,
-                ({title_score_conditions}) AS title_score
+                t.tier,
+                t.score,
+                t.rationale
             FROM wiki_notes n
+            LEFT JOIN tier_assignments t
+                ON t.source_id = n.source_id
             WHERE
-                n.tier IN ({tier_placeholders})
+                t.tier IN ({tier_placeholders})
                 AND ({title_conditions})
-            ORDER BY title_score DESC, n.id
+            ORDER BY n.id
             LIMIT %s
             """,
-            tuple(f"%{word}%" for word in words)
-            + tier_values
+            tier_values
             + tuple(f"%{word}%" for word in words)
             + (limit,),
         ).fetchall()
@@ -131,40 +143,101 @@ def search_notes(query, limit=5):
         if title_matches:
             return title_matches
 
-        # 2. Search chunks by title
-        title_matches = connection.execute(
+        # Search tags
+        tag_conditions = " OR ".join(
+            """
+            EXISTS (
+                SELECT 1
+                FROM jsonb_array_elements_text(n.tags) tag
+                WHERE lower(tag) LIKE %s
+            )
+            """
+            for _ in words
+        )
+
+        tag_matches = connection.execute(
             f"""
             SELECT
                 n.id,
                 n.title,
                 n.tags,
-                c.content
-            FROM wiki_chunks c
-            JOIN wiki_notes n ON n.id = c.note_id
+                n.content,
+                n.created_at,
+                t.tier,
+                t.score,
+                t.rationale
+            FROM wiki_notes n
+            LEFT JOIN tier_assignments t
+                ON t.source_id = n.source_id
             WHERE
-                n.tier IN ({tier_placeholders})
-                AND lower(n.title) LIKE %s
+                t.tier IN ({tier_placeholders})
+                AND ({tag_conditions})
+            ORDER BY n.id
+            LIMIT %s
+            """,
+            tier_values
+            + tuple(f"%{word}%" for word in words)
+            + (limit,),
+        ).fetchall()
+
+        if tag_matches:
+            return tag_matches
+
+        # Search chunks
+        chunk_conditions = " OR ".join(
+            "lower(c.content) LIKE %s"
+            for _ in words
+        )
+
+        chunk_matches = connection.execute(
+            f"""
+            SELECT
+                n.id,
+                n.title,
+                n.tags,
+                c.content,
+                t.tier,
+                t.score,
+                t.rationale
+            FROM wiki_chunks c
+            JOIN wiki_notes n
+                ON n.id = c.note_id
+            LEFT JOIN tier_assignments t
+                ON t.source_id = n.source_id
+            WHERE
+                t.tier IN ({tier_placeholders})
+                AND ({chunk_conditions})
             ORDER BY n.id, c.chunk_index
             LIMIT %s
             """,
-            tier_values + (f"%{terms}%", limit),
+            tier_values
+            + tuple(f"%{word}%" for word in words)
+            + (limit,),
         ).fetchall()
 
-        if title_matches:
-            return title_matches
+        if chunk_matches:
+            return chunk_matches
 
-        # 3. Full-text search inside chunks
+        # Full-text search
+        terms = " ".join(words)
+
         return connection.execute(
             f"""
             SELECT
                 n.id,
                 n.title,
                 n.tags,
-                c.content
+                c.content,
+                t.tier,
+                t.score,
+                t.rationale
             FROM wiki_chunks c
-            JOIN wiki_notes n ON n.id = c.note_id
+            JOIN wiki_notes n
+                ON n.id = c.note_id
+            LEFT JOIN tier_assignments t
+                ON t.source_id = n.source_id
             WHERE
-                n.tier IN ({tier_placeholders})
+                t.tier IN ({tier_placeholders})
                 AND to_tsvector('simple', c.content)
                     @@ plainto_tsquery('simple', %s)
             ORDER BY
