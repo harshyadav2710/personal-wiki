@@ -37,7 +37,7 @@ def _format_note(note: dict) -> str:
 @mcp.tool()
 def search_tiered_wiki(query: str) -> str:
     """Search all tiers of the personal wiki (MCP 1: full access)."""
-    results = search_tiered(query, limit=10)
+    results = search_tiered(query, limit=1000)
     if not results:
         return "No matching memories found."
     return "\n\n".join(_format_note(row) for row in results)
