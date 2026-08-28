@@ -33,3 +33,24 @@ SELECT
     a.sales
 FROM wiki_notes n
 LEFT JOIN tier_assignments a ON a.source_id = n.source_id;
+
+
+CREATE TABLE IF NOT EXISTS book_categories (
+    id BIGSERIAL PRIMARY KEY,
+
+    note_id BIGINT NOT NULL
+        REFERENCES wiki_notes(id)
+        ON DELETE CASCADE,
+
+    category TEXT NOT NULL,
+
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    UNIQUE (note_id, category)
+);
+
+CREATE INDEX IF NOT EXISTS book_categories_category_idx
+    ON book_categories (LOWER(category));
+
+CREATE INDEX IF NOT EXISTS book_categories_note_id_idx
+    ON book_categories (note_id);
