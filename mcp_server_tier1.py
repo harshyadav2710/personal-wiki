@@ -264,6 +264,29 @@ def check_oauth_status() -> str:
     return "\n".join(status_lines)
 
 
+# ============================================================================
+# OAUTH CALLBACK HANDLER (NEW)
+# ============================================================================
+
+@mcp.route("GET", "/callback")
+async def handle_github_callback(query_params: dict):
+    """Handle GitHub OAuth callback from GitHub"""
+    code = query_params.get("code")
+    if not code:
+        return {"error": "No authorization code received"}
+    
+    try:
+        token_data = github_oauth.exchange_code_for_token(code)
+        if token_data:
+            return {
+                "status": "success",
+                "message": "✅ GitHub OAuth configured successfully!",
+                "access_token": token_data.get("access_token", "")[:20] + "..."
+            }
+        return {"error": "Failed to exchange code for token"}
+    except Exception as e:
+        return {"error": f"OAuth callback failed: {str(e)}"}
+
 if __name__ == "__main__":
     if transport == "http":
         mcp.run(transport="streamable-http")
