@@ -30,7 +30,7 @@ from oauth_external_render import (
 
 
 transport = os.getenv("MCP_TRANSPORT", "stdio")
-port = int(os.getenv("MCP_TIER1_PORT", os.getenv("PORT", "10001")))
+port = int(os.getenv("MCP_TIER1_PORT", os.getenv("PORT", "5000")))
 
 mcp = FastMCP(
     "recall-personal-wiki-tier1",
