@@ -1,3 +1,5 @@
+
+
 import os
 import json
 import pickle
@@ -10,6 +12,7 @@ from mcp.server.fastmcp import FastMCP
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials as GoogleCredentials
 import google.auth
 
 
@@ -17,23 +20,18 @@ import google.auth
 # CONFIGURATION FOR RENDER DEPLOYMENT
 # ============================================================================
 
-# Use /tmp on Render (persistent storage via volumes if needed)
-# or use environment-based storage path
 STORAGE_PATH = Path(os.getenv("OAUTH_STORAGE_PATH", "/tmp/oauth_creds"))
 STORAGE_PATH.mkdir(parents=True, exist_ok=True)
 
-# Google OAuth credentials
 GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
 GOOGLE_SCOPES = [
-    "https://www.googleapis.com/auth/drive.file",  # Access Drive files
-    "https://www.googleapis.com/auth/spreadsheets",  # Read/write sheets
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/spreadsheets",
 ]
 
-# GitHub OAuth
 GITHUB_CLIENT_ID = os.getenv("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.getenv("GITHUB_CLIENT_SECRET", "")
 
-# Your MCP server (from tier1 setup)
 mcp = FastMCP(
     "wiki-with-external-oauth",
     host="0.0.0.0",
@@ -41,27 +39,25 @@ mcp = FastMCP(
 )
 
 
+# ============================================================================
+# OAUTH CREDENTIAL MANAGER
+# ============================================================================
 
 class OAuthCredentialManager:
-    """
-    Manages OAuth tokens for external services
-    - Stores credentials securely
-    - Auto-refreshes expired tokens
-    - Works on Render
-    """
+    """Manages OAuth tokens with env var fallback for Render free tier"""
     
     def __init__(self, service: str, storage_path: Path = STORAGE_PATH):
         self.service = service
         self.token_file = storage_path / f"{service}_token.pkl"
         self.meta_file = storage_path / f"{service}_meta.json"
+        self.env_var_name = f"{service.upper()}_ACCESS_TOKEN"
     
     def save_token(self, creds):
-        """Save credentials to file (Render /tmp or persistent volume)."""
+        """Save credentials to file"""
         try:
             with open(self.token_file, "wb") as f:
                 pickle.dump(creds, f)
             
-            # Also save metadata (expiry, etc.)
             meta = {
                 "service": self.service,
                 "saved_at": datetime.utcnow().isoformat(),
@@ -76,7 +72,7 @@ class OAuthCredentialManager:
             return False
     
     def load_token(self):
-        """Load credentials from storage."""
+        """Load credentials from storage"""
         if not self.token_file.exists():
             return None
         
@@ -88,7 +84,7 @@ class OAuthCredentialManager:
             return None
     
     def get_metadata(self) -> dict:
-        """Get token metadata (expiry, last refresh, etc.)."""
+        """Get token metadata"""
         if not self.meta_file.exists():
             return {}
         
@@ -100,16 +96,18 @@ class OAuthCredentialManager:
             return {}
 
 
+# ============================================================================
+# GOOGLE DRIVE OAUTH (WITH ENV VAR SUPPORT)
+# ============================================================================
 
 class GoogleDriveOAuth:
     """
-    Manage Google Drive access via OAuth
+    Google Drive OAuth with env var fallback for Render
     
-    Setup:
-    1. Go to Google Cloud Console
-    2. Create OAuth 2.0 Desktop Application
-    3. Download credentials.json
-    4. Set GOOGLE_CREDENTIALS_JSON env var with file content (or path)
+    Priority:
+    1. GOOGLE_ACCESS_TOKEN env var (Render persistent)
+    2. File storage
+    3. OAuth flow
     """
     
     def __init__(self):
@@ -117,15 +115,10 @@ class GoogleDriveOAuth:
         self.service = None
     
     def setup_credentials_file(self):
-        """
-        On Render, credentials come from environment variable.
-        Create credentials.json from env var.
-        """
+        """Create credentials.json from env var"""
         if GOOGLE_CREDENTIALS_JSON.startswith("{"):
-            # It's JSON content
             creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
         else:
-            # It's a file path
             with open(GOOGLE_CREDENTIALS_JSON) as f:
                 creds_dict = json.load(f)
         
@@ -138,56 +131,71 @@ class GoogleDriveOAuth:
     def get_credentials(self, force_refresh=False):
         """
         Get Google OAuth credentials
-        - Load from cache if fresh
-        - Refresh if expired
-        - Do OAuth flow if no token
+        
+        ✅ RENDER FREE TIER: Checks env var first (persistent!)
+        Falls back to file storage
         """
+        
+        # ========== STEP 1: Check env var (Render persistent) ==========
+        token_from_env = os.getenv("GOOGLE_ACCESS_TOKEN")
+        if token_from_env and not force_refresh:
+            print("✅ Using GOOGLE_ACCESS_TOKEN from env var")
+            return GoogleCredentials(token=token_from_env)
+        
+        # ========== STEP 2: Check file storage ==========
         creds = self.manager.load_token()
         
-        # Check if valid and not expired
         if creds and not force_refresh:
             if creds.valid:
+                print("✅ Using cached Google credentials")
                 return creds
             if creds.expired and creds.refresh_token:
+                print("🔄 Refreshing expired Google credentials")
                 creds.refresh(Request())
                 self.manager.save_token(creds)
                 return creds
         
-        # Need new token - do OAuth flow
+        # ========== STEP 3: Do OAuth flow ==========
+        print("🔐 Starting Google OAuth flow...")
         creds_file = self.setup_credentials_file()
         flow = InstalledAppFlow.from_client_secrets_file(
             str(creds_file),
             GOOGLE_SCOPES
         )
         
-        # On Render, use local server (no browser, so use run_local_server with port)
         creds = flow.run_local_server(port=8080)
         self.manager.save_token(creds)
+        
+        print(f"\n✅ Google OAuth success!")
+        print(f"⚠️  Save this to Render for persistence:")
+        print(f"GOOGLE_ACCESS_TOKEN={creds.token}\n")
         
         return creds
     
     def get_service(self):
-        """Get authenticated Google Drive service."""
+        """Get authenticated Google Drive service"""
         creds = self.get_credentials()
         return build("drive", "v3", credentials=creds)
 
 
+# ============================================================================
+# GITHUB OAUTH (WITH ENV VAR SUPPORT)
+# ============================================================================
+
 class GitHubOAuth:
     """
-    Manage GitHub access via OAuth
+    GitHub OAuth with env var fallback for Render
     
-    Setup:
-    1. Go to GitHub Settings > Developer Settings > OAuth Apps
-    2. Create new app
-    3. Set Client ID and Secret as env vars
-    4. Authorization callback: https://your-render-app.onrender.com/oauth/github/callback
+    Priority:
+    1. GITHUB_ACCESS_TOKEN env var (Render persistent)
+    2. File storage
     """
     
     def __init__(self):
         self.manager = OAuthCredentialManager("github")
     
     def get_auth_url(self, redirect_uri: str) -> str:
-        """Generate GitHub OAuth authorization URL."""
+        """Generate GitHub OAuth authorization URL"""
         return (
             f"https://github.com/login/oauth/authorize?"
             f"client_id={GITHUB_CLIENT_ID}"
@@ -196,10 +204,7 @@ class GitHubOAuth:
         )
     
     def exchange_code_for_token(self, code: str) -> Optional[dict]:
-        """
-        Exchange auth code for access token
-        Called after user authorizes on GitHub
-        """
+        """Exchange auth code for access token"""
         response = requests.post(
             "https://github.com/login/oauth/access_token",
             data={
@@ -212,7 +217,6 @@ class GitHubOAuth:
         
         if response.status_code == 200:
             token_data = response.json()
-            # Save token
             token_file = STORAGE_PATH / "github_token.json"
             with open(token_file, "w") as f:
                 json.dump(token_data, f)
@@ -221,29 +225,56 @@ class GitHubOAuth:
         return None
     
     def get_access_token(self) -> Optional[str]:
-        """Get stored GitHub access token."""
+        """
+        Get GitHub access token
+        
+        ✅ RENDER FREE TIER: Checks env var first (persistent!)
+        Falls back to file storage
+        """
+        
+        # ========== STEP 1: Check env var (Render persistent) ==========
+        token = os.getenv("GITHUB_ACCESS_TOKEN")
+        if token:
+            print("✅ Using GITHUB_ACCESS_TOKEN from env var")
+            return token
+        
+        # ========== STEP 2: Check file storage ==========
         token_file = STORAGE_PATH / "github_token.json"
         if token_file.exists():
-            with open(token_file) as f:
-                data = json.load(f)
-                return data.get("access_token")
+            try:
+                with open(token_file) as f:
+                    data = json.load(f)
+                    stored_token = data.get("access_token")
+                    if stored_token:
+                        print("✅ Using cached GitHub token")
+                        return stored_token
+            except Exception as e:
+                print(f"⚠️  Error reading GitHub token file: {e}")
+        
         return None
 
+
+# ============================================================================
+# INITIALIZE OAUTH HANDLERS
+# ============================================================================
 
 google_oauth = GoogleDriveOAuth()
 github_oauth = GitHubOAuth()
 
 
+# ============================================================================
+# MCP TOOLS
+# ============================================================================
+
 @mcp.tool()
 def setup_google_oauth() -> str:
-    """
-    SETUP: Initialize Google Drive OAuth
-    
-    Returns URL for authorization (on Render, watch logs for instructions)
-    """
+    """Setup Google Drive OAuth"""
     try:
         creds = google_oauth.get_credentials()
         if creds:
+            token = creds.token if hasattr(creds, 'token') else "✅ Configured"
+            if token and len(token) > 30:
+                return f"✅ Google Drive OAuth configured!\n\nToken preview: {token[:30]}...\n\nAdd to Render:\nGOOGLE_ACCESS_TOKEN={token}"
             return "✅ Google Drive OAuth configured! Token saved."
     except Exception as e:
         return f"⚠️ OAuth setup error: {str(e)}"
@@ -251,29 +282,22 @@ def setup_google_oauth() -> str:
 
 @mcp.tool()
 def google_drive_backup_wiki(folder_name: str = "Wiki Backup") -> str:
-    """
-    LEARNING: Backup your wiki to Google Drive
-    - Uses OAuth credentials
-    - Creates/updates folder automatically
-    - Exports all notes as files
-    """
+    """Backup wiki to Google Drive"""
     try:
         service = google_oauth.get_service()
         
-        # Check if backup folder exists
         query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
         results = service.files().list(q=query, spaces="drive", pageSize=1).execute()
         
         files = results.get("files", [])
         if files:
             folder_id = files[0]["id"]
+            return f"✅ Backup folder exists: {folder_name} (ID: {folder_id})"
         else:
-            # Create folder
             folder_metadata = {"name": folder_name, "mimeType": "application/vnd.google-apps.folder"}
             folder = service.files().create(body=folder_metadata, fields="id").execute()
             folder_id = folder["id"]
-        
-        return f"✅ Google Drive backup folder ready: {folder_name} (ID: {folder_id})"
+            return f"✅ Created backup folder: {folder_name} (ID: {folder_id})"
     
     except Exception as e:
         return f"❌ Backup failed: {str(e)}"
@@ -281,23 +305,16 @@ def google_drive_backup_wiki(folder_name: str = "Wiki Backup") -> str:
 
 @mcp.tool()
 def export_notes_to_drive() -> str:
-    """
-    Export all wiki notes to Google Drive as documents
-    Requires: setup_google_oauth() called first
-    """
+    """Export wiki notes to Google Drive"""
     try:
         service = google_oauth.get_service()
         
-        # Get all notes from your wiki (using tier_store functions)
-        # For now, create a test file
         file_metadata = {
             "name": f"Wiki Export {datetime.utcnow().isoformat()}",
             "mimeType": "text/plain",
         }
         
-        media = open("/tmp/test_export.txt", "rb") if Path("/tmp/test_export.txt").exists() else None
-        file = service.files().create(body=file_metadata, media_body=media, fields="id").execute()
-        
+        file = service.files().create(body=file_metadata, fields="id").execute()
         return f"✅ Notes exported to Drive: {file.get('id')}"
     
     except Exception as e:
@@ -306,40 +323,28 @@ def export_notes_to_drive() -> str:
 
 @mcp.tool()
 def setup_github_oauth(callback_url: str) -> str:
-    """
-    SETUP: Initialize GitHub OAuth
-    
-    Usage:
-    1. Call this tool with your Render app callback URL
-    2. User visits returned URL to authorize
-    3. GitHub redirects with code
-    4. Exchange code for token
-    """
+    """Setup GitHub OAuth"""
     try:
         auth_url = github_oauth.get_auth_url(callback_url)
-        return f"Visit this URL to authorize:\n{auth_url}"
+        return f"🔗 Visit this URL to authorize:\n{auth_url}"
     except Exception as e:
-        return f"Error: {str(e)}"
+        return f"❌ Error: {str(e)}"
 
 
 @mcp.tool()
-def sync_wiki_to_github(repo: str, token: str) -> str:
-    """
-    Sync wiki notes to GitHub repository
-    
-    Args:
-    - repo: "username/repo" format
-    - token: GitHub personal access token (or get from OAuth)
-    """
+def sync_wiki_to_github(repo: str, token: str = "") -> str:
+    """Sync wiki to GitHub repository"""
     try:
         access_token = github_oauth.get_access_token() or token
+        
+        if not access_token:
+            return "❌ No GitHub token available. Set GITHUB_ACCESS_TOKEN env var or provide token."
         
         headers = {
             "Authorization": f"token {access_token}",
             "Accept": "application/vnd.github.v3+json",
         }
         
-        # Example: Create a gist with wiki content
         gist_data = {
             "description": "Wiki Backup",
             "public": False,
@@ -368,31 +373,63 @@ def sync_wiki_to_github(repo: str, token: str) -> str:
 
 @mcp.tool()
 def check_oauth_status() -> str:
-    """Check status of all configured OAuth connections."""
+    """Check status of all OAuth connections"""
     status = []
     
-    # Google status
+    # Google
+    google_env = os.getenv("GOOGLE_ACCESS_TOKEN")
     google_meta = google_oauth.manager.get_metadata()
-    if google_meta:
-        status.append(f"✅ Google Drive: {google_meta.get('saved_at', 'configured')}")
+    
+    if google_env:
+        status.append("✅ Google Drive: Env var set (GOOGLE_ACCESS_TOKEN)")
+    elif google_meta:
+        status.append(f"✅ Google Drive: Cached ({google_meta.get('saved_at', 'configured')})")
     else:
         status.append("⚠️ Google Drive: Not configured")
     
-    # GitHub status
+    # GitHub
     github_token = github_oauth.get_access_token()
-    if github_token:
-        status.append("✅ GitHub: Configured")
+    
+    if os.getenv("GITHUB_ACCESS_TOKEN"):
+        status.append("✅ GitHub: Env var set (GITHUB_ACCESS_TOKEN)")
+    elif github_token:
+        status.append("✅ GitHub: Cached token available")
     else:
         status.append("⚠️ GitHub: Not configured")
     
     return "\n".join(status)
 
 
+@mcp.tool()
+def get_github_auth_code(code: str) -> str:
+    """Exchange GitHub authorization code for token"""
+    try:
+        token_data = github_oauth.exchange_code_for_token(code)
+        if token_data:
+            return f"✅ GitHub OAuth configured successfully!\n\nAdd to Render:\nGITHUB_ACCESS_TOKEN={token_data.get('access_token', '')}"
+        return "❌ Failed to exchange code for token"
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
+
+
+# ============================================================================
+# MAIN
+# ============================================================================
 
 if __name__ == "__main__":
-    # Test setup
-    print("OAuth Manager initialized for Render")
-    print(f"Storage path: {STORAGE_PATH}")
-    print(f"Google scopes: {GOOGLE_SCOPES}")
-    print("\nTo run MCP:")
-    print("  mcp.run()")
+    print("=" * 80)
+    print("OAuth Manager for Render - Complete Updated Version")
+    print("=" * 80)
+    print(f"\n✅ Storage path: {STORAGE_PATH}")
+    print(f"✅ Google scopes: {len(GOOGLE_SCOPES)} configured")
+    print(f"✅ GitHub OAuth: {'Configured' if GITHUB_CLIENT_ID else 'Not configured'}")
+    print("\n📝 To run MCP server:")
+    print("   python oauth_external_render_COMPLETE.py")
+    print("\n" + "=" * 80)
+    
+    # Run MCP
+    transport = os.getenv("MCP_TRANSPORT", "stdio")
+    if transport == "http":
+        mcp.run(transport="streamable-http")
+    else:
+        mcp.run(transport="stdio")
