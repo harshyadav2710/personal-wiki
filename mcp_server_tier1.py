@@ -7,6 +7,8 @@ import os
 from functools import wraps
 
 from mcp.server.fastmcp import FastMCP
+from starlette.responses import JSONResponse
+from starlette.requests import Request
 
 from tier_store import (
     get_tiered,
@@ -43,6 +45,47 @@ mcp = FastMCP(
 # ============================================================================
 google_oauth = GoogleDriveOAuth()
 github_oauth = GitHubOAuth()
+
+
+# ============================================================================
+# OAUTH CALLBACK ROUTES (HTTP Handlers)
+# ============================================================================
+
+@mcp.route("/oauth/github/callback")
+async def github_callback(request: Request):
+    """Handle GitHub OAuth callback"""
+    code = request.query_params.get("code")
+    error = request.query_params.get("error")
+
+    if error:
+        return JSONResponse({"error": f"GitHub authorization failed: {error}"}, status_code=400)
+
+    if not code:
+        return JSONResponse({"error": "No authorization code received"}, status_code=400)
+
+    try:
+        token_data = github_oauth.exchange_code_for_token(code)
+        if token_data:
+            return JSONResponse({
+                "status": "✅ GitHub OAuth configured successfully!",
+                "access_token": token_data.get("access_token", "")[:20] + "...",
+                "scope": token_data.get("scope", "")
+            }, status_code=200)
+        return JSONResponse({"error": "Failed to exchange code for token"}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": f"OAuth error: {str(e)}"}, status_code=500)
+
+
+@mcp.route("/oauth/status")
+async def oauth_status(request: Request):
+    """Check OAuth configuration status"""
+    github_token = github_oauth.get_access_token()
+    google_meta = google_oauth.manager.get_metadata()
+
+    return JSONResponse({
+        "github": "✅ Configured" if github_token else "⚠️ Not configured",
+        "google": "✅ Configured" if google_meta else "⚠️ Not configured"
+    }, status_code=200)
 
 
 # ============================================================================
