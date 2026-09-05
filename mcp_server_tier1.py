@@ -48,10 +48,9 @@ github_oauth = GitHubOAuth()
 
 
 # ============================================================================
-# OAUTH CALLBACK ROUTES (HTTP Handlers)
+# OAUTH CALLBACK ROUTES (HTTP Handlers - using Starlette)
 # ============================================================================
 
-@mcp.route("/oauth/github/callback")
 async def github_callback(request: Request):
     """Handle GitHub OAuth callback"""
     code = request.query_params.get("code")
@@ -76,7 +75,6 @@ async def github_callback(request: Request):
         return JSONResponse({"error": f"OAuth error: {str(e)}"}, status_code=500)
 
 
-@mcp.route("/oauth/status")
 async def oauth_status(request: Request):
     """Check OAuth configuration status"""
     github_token = github_oauth.get_access_token()
@@ -86,6 +84,11 @@ async def oauth_status(request: Request):
         "github": "✅ Configured" if github_token else "⚠️ Not configured",
         "google": "✅ Configured" if google_meta else "⚠️ Not configured"
     }, status_code=200)
+
+
+# Register routes with the MCP server's Starlette app
+mcp.app.add_route("/oauth/github/callback", github_callback)
+mcp.app.add_route("/oauth/status", oauth_status)
 
 
 # ============================================================================
