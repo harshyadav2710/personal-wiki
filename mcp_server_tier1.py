@@ -284,7 +284,7 @@ def setup_github_oauth(callback_url: str) -> str:
 def check_oauth_status() -> str:
     """Check status of OAuth connections (Google Drive, GitHub) - PUBLIC"""
     status_lines = []
-    
+
     # Check Google
     google_meta = google_oauth.manager.get_metadata()
     if google_meta:
@@ -292,15 +292,27 @@ def check_oauth_status() -> str:
         status_lines.append(f"✅ Google Drive: {saved_at}")
     else:
         status_lines.append("⚠️ Google Drive: Not configured yet")
-    
+
     # Check GitHub
     github_token = github_oauth.get_access_token()
     if github_token:
         status_lines.append("✅ GitHub: Configured")
     else:
         status_lines.append("⚠️ GitHub: Not configured yet")
-    
+
     return "\n".join(status_lines)
+
+
+@mcp.tool()
+def get_github_auth_code(code: str) -> str:
+    """Exchange GitHub authorization code for access token"""
+    try:
+        token_data = github_oauth.exchange_code_for_token(code)
+        if token_data:
+            return "✅ GitHub OAuth configured successfully! Token saved."
+        return "❌ Failed to exchange code for token"
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
 
 
 @mcp.tool()
