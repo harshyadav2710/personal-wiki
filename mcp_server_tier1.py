@@ -19,6 +19,14 @@ from tier_store import (
     list_categories,
 )
 
+# ============================================================================
+# OAUTH IMPORTS (NEW)
+# ============================================================================
+from oauth_external_render import (
+    GoogleDriveOAuth,
+    GitHubOAuth,
+)
+
 
 transport = os.getenv("MCP_TRANSPORT", "stdio")
 port = int(os.getenv("MCP_TIER1_PORT", os.getenv("PORT", "10001")))
@@ -28,6 +36,12 @@ mcp = FastMCP(
     host="0.0.0.0",
     port=port,
 )
+
+# ============================================================================
+# OAUTH INITIALIZATION (NEW)
+# ============================================================================
+google_oauth = GoogleDriveOAuth()
+github_oauth = GitHubOAuth()
 
 
 def _format_note(note: dict) -> str:
@@ -177,6 +191,78 @@ def get_book_categories() -> str:
         f"{row['category']}: {row['book_count']} books"
         for row in rows
     )
+
+@mcp.tool()
+def setup_google_oauth() -> str:
+    """Setup Google Drive OAuth - initialize backup connection"""
+    try:
+        creds = google_oauth.get_credentials()
+        if creds:
+            return "✅ Google Drive OAuth configured! Credentials saved."
+        return "⚠️ Google OAuth setup incomplete"
+    except Exception as e:
+        return f"❌ Google OAuth error: {str(e)}"
+
+
+@mcp.tool()
+def google_drive_backup_wiki(folder_name: str = "Wiki Backup") -> str:
+    """Backup wiki notes to Google Drive folder"""
+    try:
+        service = google_oauth.get_service()
+        
+        # Check if folder exists
+        query = f"name='{folder_name}' and mimeType='application/vnd.google-apps.folder' and trashed=false"
+        results = service.files().list(q=query, spaces="drive", pageSize=1).execute()
+        
+        files = results.get("files", [])
+        if files:
+            folder_id = files[0]["id"]
+            return f"✅ Backup folder already exists: {folder_name}"
+        else:
+            # Create new folder
+            folder_metadata = {
+                "name": folder_name,
+                "mimeType": "application/vnd.google-apps.folder"
+            }
+            folder = service.files().create(body=folder_metadata, fields="id").execute()
+            folder_id = folder["id"]
+            return f"✅ Created backup folder: {folder_name}"
+    except Exception as e:
+        return f"❌ Backup failed: {str(e)}"
+
+
+@mcp.tool()
+def setup_github_oauth(callback_url: str) -> str:
+    """Get GitHub authorization URL"""
+    try:
+        auth_url = github_oauth.get_auth_url(callback_url)
+        return f"🔗 Authorize GitHub:\n{auth_url}"
+    except Exception as e:
+        return f"❌ GitHub setup error: {str(e)}"
+
+
+@mcp.tool()
+def check_oauth_status() -> str:
+    """Check status of OAuth connections (Google Drive, GitHub)"""
+    status_lines = []
+    
+    # Check Google
+    google_meta = google_oauth.manager.get_metadata()
+    if google_meta:
+        saved_at = google_meta.get('saved_at', 'configured')
+        status_lines.append(f"✅ Google Drive: {saved_at}")
+    else:
+        status_lines.append("⚠️ Google Drive: Not configured yet")
+    
+    # Check GitHub
+    github_token = github_oauth.get_access_token()
+    if github_token:
+        status_lines.append("✅ GitHub: Configured")
+    else:
+        status_lines.append("⚠️ GitHub: Not configured yet")
+    
+    return "\n".join(status_lines)
+
 
 if __name__ == "__main__":
     if transport == "http":
