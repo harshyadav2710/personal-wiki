@@ -20,7 +20,7 @@ import google.auth
 # Use /tmp on Render (persistent storage via volumes if needed)
 # or use environment-based storage path
 STORAGE_PATH = Path(os.getenv("OAUTH_STORAGE_PATH", "/tmp/oauth_creds"))
-STORAGE_PATH.mkdir(exist_ok=True)
+STORAGE_PATH.mkdir(parents=True, exist_ok=True)
 
 # Google OAuth credentials
 GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
