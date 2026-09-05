@@ -5,3 +5,8 @@ mcp>=1.9,<2.0
 torch>=2.4,<3.0
 numpy>=2.0,<3.0
 fastmcp
+google-auth-oauthlib
+google-auth-httplib2
+google-api-python-client
+pyjwt
+requests
