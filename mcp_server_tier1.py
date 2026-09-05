@@ -4,6 +4,7 @@ Has access to ALL tiers (1, 2, 3). Launched with MCP_TIER=1.
 """
 
 import os
+from functools import wraps
 
 from mcp.server.fastmcp import FastMCP
 
@@ -44,6 +45,21 @@ google_oauth = GoogleDriveOAuth()
 github_oauth = GitHubOAuth()
 
 
+# ============================================================================
+# AUTHENTICATION DECORATOR (NEW)
+# ============================================================================
+
+def require_oauth_token(func):
+    """Decorator to require OAuth token for tool access"""
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        token = github_oauth.get_access_token()
+        if not token:
+            return "❌ Access Denied: You must authorize with GitHub first. Run 'setup_github_oauth' to get the auth URL."
+        return func(*args, **kwargs)
+    return wrapper
+
+
 def _format_note(note: dict) -> str:
     return (
         f"[{note['id']}] (T{note.get('tier', '?')}) {note['title']}\n"
@@ -52,7 +68,12 @@ def _format_note(note: dict) -> str:
     )
 
 
+# ============================================================================
+# PROTECTED TOOLS (Require OAuth Token)
+# ============================================================================
+
 @mcp.tool()
+@require_oauth_token
 def search_tiered_wiki(query: str) -> str:
     """Search all tiers of the personal wiki (MCP 1: full access)."""
     results = search_tiered(query, limit=1000)
@@ -62,6 +83,7 @@ def search_tiered_wiki(query: str) -> str:
 
 
 @mcp.tool()
+@require_oauth_token
 def read_tiered_note(note_id: int) -> str:
     """Read a single note by id. Tier-restricted by the running server."""
     note = get_tiered(note_id)
@@ -71,6 +93,7 @@ def read_tiered_note(note_id: int) -> str:
 
 
 @mcp.tool()
+@require_oauth_token
 def list_recent_tiered_notes(limit: int = 10) -> str:
     """List recent notes accessible to this tier server."""
     notes = list_recent_tiered(limit)
@@ -84,6 +107,7 @@ def list_recent_tiered_notes(limit: int = 10) -> str:
 
 
 @mcp.tool()
+@require_oauth_token
 def save_tiered_note(title: str, content: str, tags: list[str] | None = None) -> str:
     """Save a new note. Tier is auto-assigned from tags (private -> T3)."""
     if not title.strip() or not content.strip():
@@ -93,6 +117,7 @@ def save_tiered_note(title: str, content: str, tags: list[str] | None = None) ->
 
 
 @mcp.tool()
+@require_oauth_token
 def get_tier_server_status() -> str:
     """Describe the running tier server and counts per tier."""
     info = tier_status()
@@ -103,7 +128,9 @@ def get_tier_server_status() -> str:
         f"rows: {counts or 'none'}"
     )
 
+
 @mcp.tool()
+@require_oauth_token
 def browse_tier(
     tier: int,
     page: int = 1,
@@ -129,6 +156,7 @@ def browse_tier(
 
 
 @mcp.tool()
+@require_oauth_token
 def search_book_titles(
     query: str,
     page: int = 1,
@@ -154,6 +182,7 @@ def search_book_titles(
 
 
 @mcp.tool()
+@require_oauth_token
 def browse_book_category(
     category: str,
     page: int = 1,
@@ -179,6 +208,7 @@ def browse_book_category(
 
 
 @mcp.tool()
+@require_oauth_token
 def get_book_categories() -> str:
     """List all available book categories and their book counts."""
 
@@ -191,6 +221,11 @@ def get_book_categories() -> str:
         f"{row['category']}: {row['book_count']} books"
         for row in rows
     )
+
+
+# ============================================================================
+# PUBLIC TOOLS (No OAuth Required - Anyone Can Use)
+# ============================================================================
 
 @mcp.tool()
 def setup_google_oauth() -> str:
@@ -233,7 +268,7 @@ def google_drive_backup_wiki(folder_name: str = "Wiki Backup") -> str:
 
 @mcp.tool()
 def setup_github_oauth(callback_url: str) -> str:
-    """Get GitHub authorization URL"""
+    """Get GitHub authorization URL - PUBLIC"""
     try:
         auth_url = github_oauth.get_auth_url(callback_url)
         return f"🔗 Authorize GitHub:\n{auth_url}"
@@ -243,7 +278,7 @@ def setup_github_oauth(callback_url: str) -> str:
 
 @mcp.tool()
 def check_oauth_status() -> str:
-    """Check status of OAuth connections (Google Drive, GitHub)"""
+    """Check status of OAuth connections (Google Drive, GitHub) - PUBLIC"""
     status_lines = []
     
     # Check Google
@@ -264,28 +299,17 @@ def check_oauth_status() -> str:
     return "\n".join(status_lines)
 
 
-# ============================================================================
-# OAUTH CALLBACK HANDLER (NEW)
-# ============================================================================
-
-@mcp.route("GET", "/callback")
-async def handle_github_callback(query_params: dict):
-    """Handle GitHub OAuth callback from GitHub"""
-    code = query_params.get("code")
-    if not code:
-        return {"error": "No authorization code received"}
-    
+@mcp.tool()
+def get_github_auth_code(code: str) -> str:
+    """Exchange GitHub authorization code for access token (call this after GitHub redirect)"""
     try:
         token_data = github_oauth.exchange_code_for_token(code)
         if token_data:
-            return {
-                "status": "success",
-                "message": "✅ GitHub OAuth configured successfully!",
-                "access_token": token_data.get("access_token", "")[:20] + "..."
-            }
-        return {"error": "Failed to exchange code for token"}
+            return "✅ GitHub OAuth configured successfully! Token saved."
+        return "❌ Failed to exchange code for token"
     except Exception as e:
-        return {"error": f"OAuth callback failed: {str(e)}"}
+        return f"❌ Error: {str(e)}"
+
 
 if __name__ == "__main__":
     if transport == "http":
