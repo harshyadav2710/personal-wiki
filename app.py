@@ -6,9 +6,10 @@ import re
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, redirect, url_for
 from postgres_store import connect, initialize_schema, search_notes
 from wiki_engine import LLM_BACKEND, answer_question_from_notes
+from oauth_external_render import github_oauth, google_oauth
 
 load_dotenv()
 app = Flask(__name__)
@@ -182,6 +183,62 @@ def chat():
 @app.get("/api/health")
 def health():
     return jsonify({"postgres_connected": postgres_status == "Connected to PostgreSQL", "llm_backend": LLM_BACKEND, "status": postgres_status})
+
+
+# ============================================================================
+# OAUTH CALLBACK HANDLERS (NEW)
+# ============================================================================
+
+@app.get("/oauth/github/callback")
+def github_callback():
+    """Handle GitHub OAuth callback"""
+    code = request.args.get("code")
+    error = request.args.get("error")
+
+    if error:
+        return jsonify({"error": f"GitHub authorization failed: {error}"}), 400
+
+    if not code:
+        return jsonify({"error": "No authorization code received"}), 400
+
+    try:
+        token_data = github_oauth.exchange_code_for_token(code)
+        if token_data:
+            return jsonify({
+                "status": "✅ GitHub OAuth configured successfully!",
+                "access_token": token_data.get("access_token", "")[:20] + "...",
+                "scope": token_data.get("scope", "")
+            }), 200
+        return jsonify({"error": "Failed to exchange code for token"}), 400
+    except Exception as e:
+        return jsonify({"error": f"OAuth error: {str(e)}"}), 500
+
+
+@app.get("/oauth/google/callback")
+def google_callback():
+    """Handle Google OAuth callback"""
+    code = request.args.get("code")
+    error = request.args.get("error")
+
+    if error:
+        return jsonify({"error": f"Google authorization failed: {error}"}), 400
+
+    if not code:
+        return jsonify({"error": "No authorization code received"}), 400
+
+    return jsonify({"status": "✅ Google OAuth callback received", "code": code[:20] + "..."}), 200
+
+
+@app.get("/oauth/status")
+def oauth_status():
+    """Check OAuth configuration status"""
+    github_token = github_oauth.get_access_token()
+    google_meta = google_oauth.manager.get_metadata()
+
+    return jsonify({
+        "github": "✅ Configured" if github_token else "⚠️ Not configured",
+        "google": "✅ Configured" if google_meta else "⚠️ Not configured"
+    }), 200
 
 
 if __name__ == "__main__":
