@@ -31,15 +31,49 @@ from oauth_external_render import (
 )
 
 HARSH_GITHUB_TOKEN = os.getenv("GITHUB_ACCESS_TOKEN")
+# ========== ADD THIS AFTER IMPORTS ==========
 
+# GLOBAL API KEY STORAGE (ADD AFTER LINE 31, after HARSH_GITHUB_TOKEN = ...)
+stored_api_key = None
+
+
+# ========== REPLACE THIS FUNCTION ==========
+
+# REPLACE the existing require_oauth_token function with this:
 def require_oauth_token(func):
     @wraps(func)
     def wrapper(*args, api_key: str = None, **kwargs):
-        if api_key != HARSH_GITHUB_TOKEN:
-            return "❌ Access Denied: Invalid or missing token"
+        # Check passed parameter first, then global stored key
+        token = api_key or stored_api_key
+        
+        if token != HARSH_GITHUB_TOKEN:
+            return "❌ Access Denied: Invalid or missing token. Run set_api_key(token) first!"
         
         return func(*args, **kwargs)
     return wrapper
+
+
+# ========== ADD THIS NEW TOOL ==========
+
+# ADD THIS TOOL BEFORE @mcp.tool() for search_tiered_wiki (around line 68):
+@mcp.tool()
+def set_api_key(token: str) -> str:
+    """
+    Set your API key once - stores in session.
+    
+    Usage:
+    - Call this FIRST: set_api_key("YOUR_TOKEN_HERE")
+    - Then all protected tools will work automatically without passing token each time
+    
+    Example: set_api_key("ghp_xyz123")
+    """
+    global stored_api_key
+    stored_api_key = token
+    
+    if token == HARSH_GITHUB_TOKEN:
+        return "✅ API key set successfully! All tools now available. You can use them without passing token parameter."
+    else:
+        return "⚠️ Token saved, but it might be invalid. Check with your admin if tools fail."
 
 transport = os.getenv("MCP_TRANSPORT", "stdio")
 port = int(os.getenv("MCP_TIER1_PORT", os.getenv("PORT", "5000")))
