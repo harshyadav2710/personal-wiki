@@ -34,11 +34,9 @@ HARSH_GITHUB_TOKEN = os.getenv("GITHUB_ACCESS_TOKEN")
 
 def require_oauth_token(func):
     @wraps(func)
-    def wrapper(*args, **kwargs):
-        token = github_oauth.get_access_token()
-        
-        if token != HARSH_GITHUB_TOKEN:
-            return "❌ Access Denied"
+    def wrapper(*args, api_key: str = None, **kwargs):
+        if api_key != HARSH_GITHUB_TOKEN:
+            return "❌ Access Denied: Invalid or missing token"
         
         return func(*args, **kwargs)
     return wrapper
@@ -69,12 +67,12 @@ def _format_note(note: dict) -> str:
 
 
 # ============================================================================
-# PROTECTED TOOLS (Require OAuth Token)
+# PROTECTED TOOLS (Require API Key Token)
 # ============================================================================
 
 @mcp.tool()
 @require_oauth_token
-def search_tiered_wiki(query: str) -> str:
+def search_tiered_wiki(query: str, api_key: str = None) -> str:
     """Search all tiers of the personal wiki (MCP 1: full access)."""
     results = search_tiered(query, limit=1000)
     if not results:
@@ -84,7 +82,7 @@ def search_tiered_wiki(query: str) -> str:
 
 @mcp.tool()
 @require_oauth_token
-def read_tiered_note(note_id: int) -> str:
+def read_tiered_note(note_id: int, api_key: str = None) -> str:
     """Read a single note by id. Tier-restricted by the running server."""
     note = get_tiered(note_id)
     if not note:
@@ -94,7 +92,7 @@ def read_tiered_note(note_id: int) -> str:
 
 @mcp.tool()
 @require_oauth_token
-def list_recent_tiered_notes(limit: int = 10) -> str:
+def list_recent_tiered_notes(limit: int = 10, api_key: str = None) -> str:
     """List recent notes accessible to this tier server."""
     notes = list_recent_tiered(limit)
     if not notes:
@@ -108,7 +106,7 @@ def list_recent_tiered_notes(limit: int = 10) -> str:
 
 @mcp.tool()
 @require_oauth_token
-def save_tiered_note(title: str, content: str, tags: list[str] | None = None) -> str:
+def save_tiered_note(title: str, content: str, tags: list[str] | None = None, api_key: str = None) -> str:
     """Save a new note. Tier is auto-assigned from tags (private -> T3)."""
     if not title.strip() or not content.strip():
         return "Title and content are required."
@@ -118,7 +116,7 @@ def save_tiered_note(title: str, content: str, tags: list[str] | None = None) ->
 
 @mcp.tool()
 @require_oauth_token
-def get_tier_server_status() -> str:
+def get_tier_server_status(api_key: str = None) -> str:
     """Describe the running tier server and counts per tier."""
     info = tier_status()
     counts = ", ".join(f"T{t}: {n}" for t, n in sorted(info["rows_per_tier"].items()))
@@ -133,6 +131,7 @@ def get_tier_server_status() -> str:
 @require_oauth_token
 def browse_tier(
     tier: int,
+    api_key: str = None,
     page: int = 1,
     page_size: int = 20,
 ) -> str:
@@ -159,6 +158,7 @@ def browse_tier(
 @require_oauth_token
 def search_book_titles(
     query: str,
+    api_key: str = None,
     page: int = 1,
     page_size: int = 20,
 ) -> str:
@@ -185,6 +185,7 @@ def search_book_titles(
 @require_oauth_token
 def browse_book_category(
     category: str,
+    api_key: str = None,
     page: int = 1,
     page_size: int = 20,
 ) -> str:
@@ -209,7 +210,7 @@ def browse_book_category(
 
 @mcp.tool()
 @require_oauth_token
-def get_book_categories() -> str:
+def get_book_categories(api_key: str = None) -> str:
     """List all available book categories and their book counts."""
 
     rows = list_categories()
@@ -224,7 +225,7 @@ def get_book_categories() -> str:
 
 
 # ============================================================================
-# PUBLIC TOOLS (No OAuth Required - Anyone Can Use)
+# PUBLIC TOOLS (No API Key Required)
 # ============================================================================
 
 @mcp.tool()
@@ -278,7 +279,7 @@ def setup_github_oauth(callback_url: str) -> str:
 
 @mcp.tool()
 def check_oauth_status() -> str:
-    """Check status of OAuth connections (Google Drive, GitHub) - PUBLIC"""
+    """Check status of all OAuth connections - PUBLIC"""
     status_lines = []
 
     # Check Google
@@ -295,6 +296,12 @@ def check_oauth_status() -> str:
         status_lines.append("✅ GitHub: Configured")
     else:
         status_lines.append("⚠️ GitHub: Not configured yet")
+
+    # Check API Key
+    if HARSH_GITHUB_TOKEN:
+        status_lines.append(f"✅ API Key: Set (preview: {HARSH_GITHUB_TOKEN[:10]}...)")
+    else:
+        status_lines.append("⚠️ API Key: Not set")
 
     return "\n".join(status_lines)
 
