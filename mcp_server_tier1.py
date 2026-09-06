@@ -38,7 +38,7 @@ MCP_API_KEY = os.getenv("MCP_API_KEY")
 # SESSION-BASED API KEY STORAGE (Per-Device/Connection)
 # ============================================================================
 sessions = {}  # {session_id: {token, created_at, device_info, expires_at}}
-SESSION_TIMEOUT = 24 * 60 * 60  # 24 hours
+SESSION_TIMEOUT = None  # Never expire (set to 24*60*60 for 24 hours if needed)
 
 
 def create_session(api_key: str, device_name: str = "unknown") -> dict:
@@ -52,7 +52,7 @@ def create_session(api_key: str, device_name: str = "unknown") -> dict:
     sessions[session_id] = {
         "token": api_key,
         "created_at": current_time,
-        "expires_at": current_time + SESSION_TIMEOUT,
+        "expires_at": current_time + SESSION_TIMEOUT if SESSION_TIMEOUT else None,
         "device_name": device_name,
         "last_used": current_time
     }
@@ -60,7 +60,7 @@ def create_session(api_key: str, device_name: str = "unknown") -> dict:
     return {
         "session_id": session_id,
         "device": device_name,
-        "expires_in_hours": SESSION_TIMEOUT / 3600
+        "expires_in_hours": SESSION_TIMEOUT / 3600 if SESSION_TIMEOUT else "Never"
     }
 
 
@@ -71,8 +71,8 @@ def validate_session(session_id: str) -> bool:
     
     session = sessions[session_id]
     
-    # Check if expired
-    if time.time() > session["expires_at"]:
+    # Check if expired (only if SESSION_TIMEOUT is set)
+    if SESSION_TIMEOUT and session["expires_at"] and time.time() > session["expires_at"]:
         del sessions[session_id]
         return False
     
@@ -83,8 +83,10 @@ def validate_session(session_id: str) -> bool:
 
 def cleanup_expired_sessions():
     """Remove expired sessions"""
+    if not SESSION_TIMEOUT:
+        return 0  # No expiry set, nothing to clean
     current_time = time.time()
-    expired = [sid for sid, s in sessions.items() if current_time > s["expires_at"]]
+    expired = [sid for sid, s in sessions.items() if s["expires_at"] and current_time > s["expires_at"]]
     for sid in expired:
         del sessions[sid]
     return len(expired)
@@ -111,7 +113,15 @@ def require_oauth_token(func):
                 return "❌ Invalid API key"
         
         # No valid auth
-        return "❌ Access Denied: No session or API key provided. Use login_device() to authenticate."
+        return (
+            "❌ Access Denied!\n\n"
+            "📱 REQUIRED STEPS:\n"
+            "1. First time only: login_device(api_key='YOUR_TOKEN', device_name='my-device')\n"
+            "2. Save the session_id from response\n"
+            "3. Use session_id in ALL future calls:\n"
+            "   search_tiered_wiki(query='...', session_id='your-session-id')\n\n"
+            "💡 Each device gets its own session_id - they don't share!"
+        )
     
     return wrapper
 
@@ -190,7 +200,7 @@ def list_active_sessions(api_key: str = None) -> str:
     
     lines = []
     for sid, session in sessions.items():
-        expires_at = time.strftime(
+        expires_at = "Never" if not session["expires_at"] else time.strftime(
             "%Y-%m-%d %H:%M:%S",
             time.localtime(session["expires_at"])
         )
