@@ -30,7 +30,7 @@ from oauth_external_render import (
     GitHubOAuth,
 )
 
-HARSH_GITHUB_TOKEN = os.getenv("GITHUB_ACCESS_TOKEN")
+MCP_API_KEY = os.getenv("MCP_API_KEY")
 
 # ============================================================================
 # GLOBAL API KEY STORAGE
@@ -47,7 +47,7 @@ def require_oauth_token(func):
         # Check passed parameter first, then global stored key
         token = api_key or stored_api_key
         
-        if token != HARSH_GITHUB_TOKEN:
+        if token != MCP_API_KEY:
             return "❌ Access Denied: Invalid or missing token. Run set_api_key(token) first!"
         
         return func(*args, **kwargs)
@@ -101,7 +101,7 @@ def set_api_key(token: str) -> str:
     global stored_api_key
     stored_api_key = token
     
-    if token == HARSH_GITHUB_TOKEN:
+    if token == MCP_API_KEY:
         return "✅ API key set successfully! All tools now available. You can use them without passing token parameter."
     else:
         return "⚠️ Token saved, but it might be invalid. Check with your admin if tools fail."
@@ -339,8 +339,8 @@ def check_oauth_status() -> str:
         status_lines.append("⚠️ GitHub: Not configured yet")
 
     # Check API Key
-    if HARSH_GITHUB_TOKEN:
-        status_lines.append(f"✅ API Key: Set (preview: {HARSH_GITHUB_TOKEN[:10]}...)")
+    if MCP_API_KEY:
+        status_lines.append(f"✅ API Key: Set (preview: {MCP_API_KEY[:10]}...)")
     else:
         status_lines.append("⚠️ API Key: Not set")
 
