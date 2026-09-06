@@ -47,7 +47,8 @@ def require_oauth_token(func):
         # Check passed parameter first, then global stored key
         token = api_key or stored_api_key
         
-        if token != MCP_API_KEY:
+        # Must have MCP_API_KEY configured AND token must match
+        if not MCP_API_KEY or token != MCP_API_KEY:
             return "❌ Access Denied: Invalid or missing token. Run set_api_key(token) first!"
         
         return func(*args, **kwargs)
