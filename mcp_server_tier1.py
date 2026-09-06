@@ -315,17 +315,6 @@ def get_github_auth_code(code: str) -> str:
         return f"❌ Error: {str(e)}"
 
 
-@mcp.tool()
-def get_github_auth_code(code: str) -> str:
-    """Exchange GitHub authorization code for access token (call this after GitHub redirect)"""
-    try:
-        token_data = github_oauth.exchange_code_for_token(code)
-        if token_data:
-            return "✅ GitHub OAuth configured successfully! Token saved."
-        return "❌ Failed to exchange code for token"
-    except Exception as e:
-        return f"❌ Error: {str(e)}"
-
 
 if __name__ == "__main__":
     if transport == "http":
