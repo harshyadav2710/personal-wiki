@@ -1,0 +1,20 @@
+{
+  "name": "tier-oauth-backend",
+  "version": "1.0.0",
+  "description": "Protected tier access with GitHub OAuth",
+  "main": "tier-oauth-backend.js",
+  "scripts": {
+    "start": "node tier-oauth-backend.js",
+    "dev": "nodemon tier-oauth-backend.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "axios": "^1.4.0",
+    "jsonwebtoken": "^9.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
