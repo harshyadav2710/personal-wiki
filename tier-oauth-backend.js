@@ -11,7 +11,7 @@ app.use(express.json());
 // GitHub OAuth Config
 const GITHUB_CLIENT_ID = 'Ov23li8bP11IVJQVJYC2';
 const GITHUB_CLIENT_SECRET = process.env.GITHUB_CLIENT_SECRET; // Set in Render env vars
-const GITHUB_REDIRECT_URI = 'https://personal-wiki-tier1.onrender.com/auth/callback';
+const GITHUB_REDIRECT_URI = 'http://localhost:3000/auth/callback';
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key'; // Change in production
 const TIER_SERVER_URL = 'https://personal-wiki-tier1.onrender.com/mcp';
 
