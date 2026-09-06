@@ -30,6 +30,18 @@ from oauth_external_render import (
     GitHubOAuth,
 )
 
+HARSH_GITHUB_TOKEN = os.getenv("GITHUB_ACCESS_TOKEN")
+
+def require_oauth_token(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        token = github_oauth.get_access_token()
+        
+        if token != HARSH_GITHUB_TOKEN:
+            return "❌ Access Denied"
+        
+        return func(*args, **kwargs)
+    return wrapper
 
 transport = os.getenv("MCP_TRANSPORT", "stdio")
 port = int(os.getenv("MCP_TIER1_PORT", os.getenv("PORT", "5000")))
@@ -46,22 +58,6 @@ mcp = FastMCP(
 google_oauth = GoogleDriveOAuth()
 github_oauth = GitHubOAuth()
 
-
-
-
-# ============================================================================
-# AUTHENTICATION DECORATOR (NEW)
-# ============================================================================
-
-def require_oauth_token(func):
-    """Decorator to require OAuth token for tool access"""
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        token = github_oauth.get_access_token()
-        if not token:
-            return "❌ Access Denied: You must authorize with GitHub first. Run 'setup_github_oauth' to get the auth URL."
-        return func(*args, **kwargs)
-    return wrapper
 
 
 def _format_note(note: dict) -> str:
