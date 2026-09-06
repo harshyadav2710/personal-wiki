@@ -1,9 +1,11 @@
-"""MCP server #1: tier 1.
+"""MCP server #1: tier 1 - SECURE VERSION with per-device sessions.
 
 Has access to ALL tiers (1, 2, 3). Launched with MCP_TIER=1.
 """
 
 import os
+import time
+from uuid import uuid4
 from functools import wraps
 
 from mcp.server.fastmcp import FastMCP
@@ -33,25 +35,84 @@ from oauth_external_render import (
 MCP_API_KEY = os.getenv("MCP_API_KEY")
 
 # ============================================================================
-# GLOBAL API KEY STORAGE
+# SESSION-BASED API KEY STORAGE (Per-Device/Connection)
 # ============================================================================
-stored_api_key = None
+sessions = {}  # {session_id: {token, created_at, device_info, expires_at}}
+SESSION_TIMEOUT = 24 * 60 * 60  # 24 hours
+
+
+def create_session(api_key: str, device_name: str = "unknown") -> dict:
+    """Create new session for this device/connection"""
+    if not MCP_API_KEY or api_key != MCP_API_KEY:
+        return {"error": "Invalid API key"}
+    
+    session_id = str(uuid4())
+    current_time = time.time()
+    
+    sessions[session_id] = {
+        "token": api_key,
+        "created_at": current_time,
+        "expires_at": current_time + SESSION_TIMEOUT,
+        "device_name": device_name,
+        "last_used": current_time
+    }
+    
+    return {
+        "session_id": session_id,
+        "device": device_name,
+        "expires_in_hours": SESSION_TIMEOUT / 3600
+    }
+
+
+def validate_session(session_id: str) -> bool:
+    """Check if session is valid and not expired"""
+    if session_id not in sessions:
+        return False
+    
+    session = sessions[session_id]
+    
+    # Check if expired
+    if time.time() > session["expires_at"]:
+        del sessions[session_id]
+        return False
+    
+    # Update last used time
+    session["last_used"] = time.time()
+    return True
+
+
+def cleanup_expired_sessions():
+    """Remove expired sessions"""
+    current_time = time.time()
+    expired = [sid for sid, s in sessions.items() if current_time > s["expires_at"]]
+    for sid in expired:
+        del sessions[sid]
+    return len(expired)
 
 
 # ============================================================================
-# DECORATOR WITH GLOBAL KEY SUPPORT
+# DECORATOR WITH SESSION VERIFICATION
 # ============================================================================
 def require_oauth_token(func):
     @wraps(func)
-    def wrapper(*args, api_key: str = None, **kwargs):
-        # Check passed parameter first, then global stored key
-        token = api_key or stored_api_key
+    def wrapper(*args, session_id: str = None, api_key: str = None, **kwargs):
+        # Priority 1: Session-based verification (secure, device-specific)
+        if session_id:
+            if validate_session(session_id):
+                return func(*args, **kwargs)
+            else:
+                return "❌ Session expired or invalid. Please login again with login_device(device_name='your-device')"
         
-        # Must have MCP_API_KEY configured AND token must match
-        if not MCP_API_KEY or token != MCP_API_KEY:
-            return "❌ Access Denied: Invalid or missing token. Run set_api_key(token) first!"
+        # Priority 2: Direct token verification (less secure, but works as fallback)
+        if api_key:
+            if MCP_API_KEY and api_key == MCP_API_KEY:
+                return func(*args, **kwargs)
+            else:
+                return "❌ Invalid API key"
         
-        return func(*args, **kwargs)
+        # No valid auth
+        return "❌ Access Denied: No session or API key provided. Use login_device() to authenticate."
+    
     return wrapper
 
 
@@ -86,35 +147,80 @@ def _format_note(note: dict) -> str:
 
 
 # ============================================================================
-# API KEY INITIALIZATION TOOL (Public - No Auth Required)
+# AUTHENTICATION TOOLS
 # ============================================================================
+
 @mcp.tool()
-def set_api_key(token: str) -> str:
+def login_device(api_key: str, device_name: str = "unknown-device") -> str:
     """
-    Set your API key once - stores in session.
+    Login from this device - get session ID for future requests
     
-    Usage:
-    - Call this FIRST: set_api_key("YOUR_TOKEN_HERE")
-    - Then all protected tools will work automatically without passing token each time
+    ✅ USE THIS APPROACH:
+    1. Call: login_device(api_key="YOUR_TOKEN", device_name="my-laptop")
+    2. Save the session_id
+    3. Use session_id in all future tool calls (don't pass api_key again)
+    4. Other devices need their own login
     
-    Example: set_api_key("ghp_xyz123")
+    Each device gets independent authentication!
     """
-    global stored_api_key
-    stored_api_key = token
+    result = create_session(api_key, device_name)
     
-    if token == MCP_API_KEY:
-        return "✅ API key set successfully! All tools now available. You can use them without passing token parameter."
-    else:
-        return "⚠️ Token saved, but it might be invalid. Check with your admin if tools fail."
+    if "error" in result:
+        return f"❌ {result['error']}"
+    
+    return (
+        f"✅ Device '{result['device']}' authenticated!\n"
+        f"Session ID: {result['session_id']}\n"
+        f"Expires in: {result['expires_in_hours']:.1f} hours\n\n"
+        f"💾 SAVE THIS SESSION ID and use it in all future requests:\n"
+        f"  session_id='{result['session_id']}'"
+    )
+
+
+@mcp.tool()
+def list_active_sessions(api_key: str = None) -> str:
+    """List all active sessions (devices currently logged in)"""
+    if not MCP_API_KEY or api_key != MCP_API_KEY:
+        return "❌ Admin API key required to list sessions"
+    
+    cleanup_expired_sessions()
+    
+    if not sessions:
+        return "No active sessions"
+    
+    lines = []
+    for sid, session in sessions.items():
+        expires_at = time.strftime(
+            "%Y-%m-%d %H:%M:%S",
+            time.localtime(session["expires_at"])
+        )
+        lines.append(
+            f"Device: {session['device_name']}\n"
+            f"  Session: {sid[:8]}...\n"
+            f"  Last used: {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(session['last_used']))}\n"
+            f"  Expires: {expires_at}"
+        )
+    
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def logout_device(session_id: str) -> str:
+    """Logout this device - invalidate session"""
+    if session_id in sessions:
+        device = sessions[session_id]["device_name"]
+        del sessions[session_id]
+        return f"✅ Device '{device}' logged out"
+    return "❌ Invalid session ID"
 
 
 # ============================================================================
-# PROTECTED TOOLS (Require API Key Token)
+# PROTECTED TOOLS (Require Session or API Key)
 # ============================================================================
 
 @mcp.tool()
 @require_oauth_token
-def search_tiered_wiki(query: str, api_key: str = None) -> str:
+def search_tiered_wiki(query: str, session_id: str = None, api_key: str = None) -> str:
     """Search all tiers of the personal wiki (MCP 1: full access)."""
     results = search_tiered(query, limit=1000)
     if not results:
@@ -124,7 +230,7 @@ def search_tiered_wiki(query: str, api_key: str = None) -> str:
 
 @mcp.tool()
 @require_oauth_token
-def read_tiered_note(note_id: int, api_key: str = None) -> str:
+def read_tiered_note(note_id: int, session_id: str = None, api_key: str = None) -> str:
     """Read a single note by id. Tier-restricted by the running server."""
     note = get_tiered(note_id)
     if not note:
@@ -134,7 +240,7 @@ def read_tiered_note(note_id: int, api_key: str = None) -> str:
 
 @mcp.tool()
 @require_oauth_token
-def list_recent_tiered_notes(limit: int = 10, api_key: str = None) -> str:
+def list_recent_tiered_notes(limit: int = 10, session_id: str = None, api_key: str = None) -> str:
     """List recent notes accessible to this tier server."""
     notes = list_recent_tiered(limit)
     if not notes:
@@ -148,7 +254,7 @@ def list_recent_tiered_notes(limit: int = 10, api_key: str = None) -> str:
 
 @mcp.tool()
 @require_oauth_token
-def save_tiered_note(title: str, content: str, tags: list[str] | None = None, api_key: str = None) -> str:
+def save_tiered_note(title: str, content: str, tags: list[str] | None = None, session_id: str = None, api_key: str = None) -> str:
     """Save a new note. Tier is auto-assigned from tags (private -> T3)."""
     if not title.strip() or not content.strip():
         return "Title and content are required."
@@ -158,7 +264,7 @@ def save_tiered_note(title: str, content: str, tags: list[str] | None = None, ap
 
 @mcp.tool()
 @require_oauth_token
-def get_tier_server_status(api_key: str = None) -> str:
+def get_tier_server_status(session_id: str = None, api_key: str = None) -> str:
     """Describe the running tier server and counts per tier."""
     info = tier_status()
     counts = ", ".join(f"T{t}: {n}" for t, n in sorted(info["rows_per_tier"].items()))
@@ -173,6 +279,7 @@ def get_tier_server_status(api_key: str = None) -> str:
 @require_oauth_token
 def browse_tier(
     tier: int,
+    session_id: str = None,
     api_key: str = None,
     page: int = 1,
     page_size: int = 20,
@@ -200,6 +307,7 @@ def browse_tier(
 @require_oauth_token
 def search_book_titles(
     query: str,
+    session_id: str = None,
     api_key: str = None,
     page: int = 1,
     page_size: int = 20,
@@ -227,6 +335,7 @@ def search_book_titles(
 @require_oauth_token
 def browse_book_category(
     category: str,
+    session_id: str = None,
     api_key: str = None,
     page: int = 1,
     page_size: int = 20,
@@ -252,7 +361,7 @@ def browse_book_category(
 
 @mcp.tool()
 @require_oauth_token
-def get_book_categories(api_key: str = None) -> str:
+def get_book_categories(session_id: str = None, api_key: str = None) -> str:
     """List all available book categories and their book counts."""
 
     rows = list_categories()
@@ -345,11 +454,10 @@ def check_oauth_status() -> str:
     else:
         status_lines.append("⚠️ API Key: Not set")
 
-    # Check if stored API key is set
-    if stored_api_key:
-        status_lines.append(f"✅ Session API Key: Set (preview: {stored_api_key[:10]}...)")
-    else:
-        status_lines.append("⚠️ Session API Key: Not set - run set_api_key() first!")
+    # Active sessions
+    cleanup_expired_sessions()
+    active_sessions = len(sessions)
+    status_lines.append(f"📱 Active sessions: {active_sessions}")
 
     return "\n".join(status_lines)
 
