@@ -33,6 +33,10 @@ from oauth_external_render import (
 )
 
 MCP_API_KEY = os.getenv("MCP_API_KEY")
+if MCP_API_KEY:
+    MCP_API_KEY = MCP_API_KEY.strip()  # Remove leading/trailing spaces
+if MCP_API_KEY:
+    MCP_API_KEY = MCP_API_KEY.strip()  # Remove leading/trailing spaces
 
 # ============================================================================
 # SESSION-BASED API KEY STORAGE (Per-Device/Connection)
@@ -43,8 +47,14 @@ SESSION_TIMEOUT = None  # Never expire (set to 24*60*60 for 24 hours if needed)
 
 def create_session(api_key: str, device_name: str = "unknown") -> dict:
     """Create new session for this device/connection"""
-    if not MCP_API_KEY or api_key != MCP_API_KEY:
-        return {"error": "Invalid API key"}
+    # Strip whitespace from input
+    api_key = api_key.strip() if api_key else None
+    
+    if not MCP_API_KEY:
+        return {"error": "Server API key not configured. Contact admin!"}
+    
+    if api_key != MCP_API_KEY:
+        return {"error": f"Invalid API key. Key mismatch - check if you're using the correct key."}
     
     session_id = str(uuid4())
     current_time = time.time()
