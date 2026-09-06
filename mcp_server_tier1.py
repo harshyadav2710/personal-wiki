@@ -191,7 +191,7 @@ def login_device(api_key: str, device_name: str = "unknown-device") -> str:
     return (
         f"✅ Device '{result['device']}' authenticated!\n"
         f"Session ID: {result['session_id']}\n"
-        f"Expires in: {result['expires_in_hours']:.1f} hours\n\n"
+        f"Expires in: {result['expires_in_hours']}\n\n"
         f"💾 SAVE THIS SESSION ID and use it in all future requests:\n"
         f"  session_id='{result['session_id']}'"
     )
