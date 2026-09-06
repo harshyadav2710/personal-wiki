@@ -23,7 +23,7 @@ from tier_store import (
 )
 
 # ============================================================================
-# OAUTH IMPORTS (NEW)
+# OAUTH IMPORTS
 # ============================================================================
 from oauth_external_render import (
     GoogleDriveOAuth,
@@ -31,15 +31,16 @@ from oauth_external_render import (
 )
 
 HARSH_GITHUB_TOKEN = os.getenv("GITHUB_ACCESS_TOKEN")
-# ========== ADD THIS AFTER IMPORTS ==========
 
-# GLOBAL API KEY STORAGE (ADD AFTER LINE 31, after HARSH_GITHUB_TOKEN = ...)
+# ============================================================================
+# GLOBAL API KEY STORAGE
+# ============================================================================
 stored_api_key = None
 
 
-# ========== REPLACE THIS FUNCTION ==========
-
-# REPLACE the existing require_oauth_token function with this:
+# ============================================================================
+# DECORATOR WITH GLOBAL KEY SUPPORT
+# ============================================================================
 def require_oauth_token(func):
     @wraps(func)
     def wrapper(*args, api_key: str = None, **kwargs):
@@ -53,9 +54,39 @@ def require_oauth_token(func):
     return wrapper
 
 
-# ========== ADD THIS NEW TOOL ==========
+# ============================================================================
+# SERVER INITIALIZATION
+# ============================================================================
+transport = os.getenv("MCP_TRANSPORT", "stdio")
+port = int(os.getenv("MCP_TIER1_PORT", os.getenv("PORT", "5000")))
 
-# ADD THIS TOOL BEFORE @mcp.tool() for search_tiered_wiki (around line 68):
+mcp = FastMCP(
+    "recall-personal-wiki-tier1",
+    host="0.0.0.0",
+    port=port,
+)
+
+# ============================================================================
+# OAUTH INITIALIZATION
+# ============================================================================
+google_oauth = GoogleDriveOAuth()
+github_oauth = GitHubOAuth()
+
+
+# ============================================================================
+# HELPER FUNCTION
+# ============================================================================
+def _format_note(note: dict) -> str:
+    return (
+        f"[{note['id']}] (T{note.get('tier', '?')}) {note['title']}\n"
+        f"{note['content']}\n"
+        f"Tags: {', '.join(note.get('tags') or [])}"
+    )
+
+
+# ============================================================================
+# API KEY INITIALIZATION TOOL (Public - No Auth Required)
+# ============================================================================
 @mcp.tool()
 def set_api_key(token: str) -> str:
     """
@@ -74,30 +105,6 @@ def set_api_key(token: str) -> str:
         return "✅ API key set successfully! All tools now available. You can use them without passing token parameter."
     else:
         return "⚠️ Token saved, but it might be invalid. Check with your admin if tools fail."
-
-transport = os.getenv("MCP_TRANSPORT", "stdio")
-port = int(os.getenv("MCP_TIER1_PORT", os.getenv("PORT", "5000")))
-
-mcp = FastMCP(
-    "recall-personal-wiki-tier1",
-    host="0.0.0.0",
-    port=port,
-)
-
-# ============================================================================
-# OAUTH INITIALIZATION (NEW)
-# ============================================================================
-google_oauth = GoogleDriveOAuth()
-github_oauth = GitHubOAuth()
-
-
-
-def _format_note(note: dict) -> str:
-    return (
-        f"[{note['id']}] (T{note.get('tier', '?')}) {note['title']}\n"
-        f"{note['content']}\n"
-        f"Tags: {', '.join(note.get('tags') or [])}"
-    )
 
 
 # ============================================================================
@@ -336,6 +343,12 @@ def check_oauth_status() -> str:
         status_lines.append(f"✅ API Key: Set (preview: {HARSH_GITHUB_TOKEN[:10]}...)")
     else:
         status_lines.append("⚠️ API Key: Not set")
+
+    # Check if stored API key is set
+    if stored_api_key:
+        status_lines.append(f"✅ Session API Key: Set (preview: {stored_api_key[:10]}...)")
+    else:
+        status_lines.append("⚠️ Session API Key: Not set - run set_api_key() first!")
 
     return "\n".join(status_lines)
 
